@@ -5,6 +5,9 @@
 
 ### Python Package
 
+**Linux only!** This program relies on dbus and will not work on windows.
+OSX not tested.
+
 You can install the [pypi](https://pypi.org/project/autoskip/) package using `pip3 install autoskip`. 
 
 Make sure wherever it is installed to is on your path. You can check with `pip3 show autoskip`.

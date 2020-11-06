@@ -352,8 +352,8 @@ async def main(loop):
         print(Fore.RED + 'Autoskip disabled ' + Style.RESET_ALL, end=' ')
 
     past_song = Song()
-
-    song_print(past_song)
+    if (past_song.title, past_song.artist, past_song.score) != ("", "", 0):
+        song_print(past_song)
 
     # Starts the input thread.
     input_thread = InputThread()
@@ -379,7 +379,7 @@ async def main(loop):
                 # Comparing objects doesn't work so it compares the dict.
                 # != (" ", " ", " ") to prevent skipping when spotify is used on another device and
                 # metadata cannot be extrected.
-                if song.__dict__ != past_song.__dict__ and (title, artist, score) != (" ", " ", " "):
+                if song.__dict__ != past_song.__dict__ and (title, artist, score) != ("", "", 0):
                     past_song = song
                     song_print(song)
 

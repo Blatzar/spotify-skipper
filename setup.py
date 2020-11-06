@@ -11,7 +11,7 @@ with io.open('autoskip/__version__.py', 'rt', encoding='utf8') as f:
     version = re.search(r'__version__ = \'(.*?)\'', f.read()).group(1)
 
 setup(
-    name='spotify-skipper',
+    name='autoskip',
     version=version,
     author='Blatzar',
     author_email='blatzar@gmail.com',
