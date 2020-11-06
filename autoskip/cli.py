@@ -37,7 +37,3 @@ def main():
     fixed_args = {i: args.__dict__[i] for i in args.__dict__ if args.__dict__[i] is not None}
     if not fixed_args or args.run:
         autoskipper.run()
-
-
-if __name__ == "__main__":
-    main()

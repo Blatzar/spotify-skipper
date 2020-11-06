@@ -8,59 +8,92 @@ import signal
 import time
 import json
 import threading
+from copy import deepcopy
 from colorama import Fore, Back, Style  # Colors in terminal
 
 DBusGMainLoop(set_as_default=True)
 
 
+def make_dir(path):
+    try:
+        os.makedirs(path)
+    except OSError as e:
+        pass
+
+
 class Config():
-    def __init__(self, path=os.path.expanduser("~/.config/autoskip"), filename="config.json"):
-        self.file = os.path.join(path, filename)
+    def __init__(self, path=None, filename="config.json"):
         self.filename = filename
-        self.path = path
+        # Allows changing XDG_CONFIG_HOME
+        if path is None:
+            if 'XDG_CONFIG_HOME' in os.environ:
+                self.path = os.path.join(os.environ.get('XDG_CONFIG_HOME'), 'autoskip')
+            else:
+                self.path = os.path.expanduser("~/.config/autoskip")
+
+        self.file = os.path.join(self.path, self.filename)
+        self.default = {
+            "skipSongsUnder": 0.1,
+            "autoSkip": True,
+        }
+
+        # File generation (only first run).
+        if not os.path.exists(self.file):
+            make_dir(self.path)
+            with open(self.file, 'w') as f:
+                json.dump(self.default, f, indent=4)
+
         with open(self.file) as f:
             settings = json.load(f)
-            self.skip_songs_under = settings['SkipSongsUnder']
-            self.max_skips = settings['MaxSkips']
-            self.autoskip = settings['Autoskip']
-            self.refreshtime = settings['Refreshtime']
+            self.skip_songs_under = settings['skipSongsUnder']
+            self.autoskip = settings['autoSkip']
 
     def write(self):
         json_data = {
-            'SkipSongsUnder': self.skip_songs_under,
-            'MaxSkips': self.max_skips,
-            'Autoskip': self.autoskip,
-            'Refreshtime': 1,
-            'Bluetoothskip': True
+            'skipSongsUnder': self.skip_songs_under,
+            'autoSkip': self.autoskip,
         }
         with open(self.file, "w") as f:
             json.dump(json_data, f, indent=4)
 
 
 class SongConfig():
-    def __init__(self, path=os.path.expanduser("~/.config/autoskip"), filename="artists.json"):
-        self.file = os.path.join(path, filename)
+    def __init__(self, path=None, filename="artists.json"):
         self.filename = filename
-        self.path = path
+        if path is None:
+            if 'XDG_CONFIG_HOME' in os.environ:
+                self.path = os.path.join(os.environ.get('XDG_CONFIG_HOME'), 'autoskip')
+            else:
+                self.path = os.path.expanduser("~/.config/autoskip")
+
+        self.file = os.path.join(self.path, self.filename)
         self.default = {
             "blacklisted": False,
             "whitelisted": False,
             "blacklisted_songs": [],
             "whitelisted_songs": []
         }
+
+        # File generation (only first run).
+        if not os.path.exists(self.file):
+            make_dir(self.path)
+            with open(self.file, 'w') as f:
+                json.dump({}, f, indent=4)
+
         with open(self.file) as f:
             self.artists = json.load(f)
 
     # Using lower level python magic this can probably be done better.
     def create(self, artist):
         if artist not in self.artists:
-            self.artists[artist] = self.default
+            self.artists[artist] = deepcopy(self.default)
         return self.artists[artist]
 
     def write(self):
-        # fixed_artists = {i: self.artists[i] for i in self.artists if self.artists[i] != self.default}
+        # Cleanup defaults.
+        fixed_artists = {i: self.artists[i] for i in self.artists if self.artists[i] != self.default}
         with open(self.file, "w") as f:
-            json.dump(self.artists, f, indent=4)
+            json.dump(fixed_artists, f, indent=4)
 
 
 class Song():
@@ -70,10 +103,16 @@ class Song():
             self.artist = artist
             self.score = score
         else:
-            get_info = dbus.SessionBus()
-            spotify_bus = get_info.get_object("org.mpris.MediaPlayer2.spotify", "/org/mpris/MediaPlayer2")
-            spotify_properties = dbus.Interface(spotify_bus, "org.freedesktop.DBus.Properties")
-            metadata = spotify_properties.Get("org.mpris.MediaPlayer2.Player", "Metadata")
+            # Waits for spotify to connect.
+            while True:
+                try:
+                    get_info = dbus.SessionBus()
+                    spotify_bus = get_info.get_object("org.mpris.MediaPlayer2.spotify", "/org/mpris/MediaPlayer2")
+                    spotify_properties = dbus.Interface(spotify_bus, "org.freedesktop.DBus.Properties")
+                    metadata = spotify_properties.Get("org.mpris.MediaPlayer2.Player", "Metadata")
+                    break
+                except dbus.exceptions.DBusException:
+                    time.sleep(1)
 
             self.title = str(metadata['xesam:title'])
             self.artist = str(metadata['xesam:artist'][0])
@@ -146,8 +185,8 @@ def toggle():
 def bls():
     song = Song()
     song_config = SongConfig()
-
     current_song = song_config.create(song.artist)
+
     if song.title in current_song["blacklisted_songs"]:
         current_song["blacklisted_songs"].remove(song.title)
         text = f'{Fore.RED}Removed{Style.RESET_ALL} "{song.title}" from blacklisted songs'
@@ -157,6 +196,7 @@ def bls():
         skip()
 
     print(text, end=' ')
+
     song_config.write()
 
 
@@ -207,6 +247,20 @@ def wla():
     song_config.write()
 
 
+def cli_help():
+    help_commands = {
+        'toggle, t': 'Toggle autoskipper',
+        'skip, s': 'Skip song',
+        'bls': 'Toggle blacklist for current song',
+        'bla': 'Toggle blacklist for current artist',
+        'wls': 'Toggle whitelist for current song',
+        'wla': 'Toggle whitelist for current artist',
+        'help, h': 'Show this menu'
+    }
+    for command, info in help_commands.items():
+        print(f'{command}: {info}')
+
+
 def command_handler(command):
     commands = {
         't': toggle,
@@ -217,6 +271,8 @@ def command_handler(command):
         'bla': bla,
         'wls': wls,
         'wla': wla,
+        'h': cli_help,
+        'help': cli_help,
     }
     for word in command:
         if word.lower() in commands:
@@ -247,13 +303,7 @@ async def main(loop):
     else:
         print(Fore.RED + 'Autoskip disabled ' + Style.RESET_ALL, end=' ')
 
-    # Waits for spotify to connect.
-    while True:
-        try:
-            past_song = Song()
-            break
-        except dbus.exceptions.DBusException:
-            time.sleep(1)
+    past_song = Song()
 
     song_print(past_song)
 
