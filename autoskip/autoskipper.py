@@ -4,13 +4,11 @@ from dbus.mainloop.glib import DBusGMainLoop
 import dbus
 import asyncio
 import os
-import sys
+import signal
 import time
 import json
 import threading
 from colorama import Fore, Back, Style  # Colors in terminal
-
-loop = asyncio.get_event_loop()
 
 DBusGMainLoop(set_as_default=True)
 
@@ -60,8 +58,6 @@ class SongConfig():
         return self.artists[artist]
 
     def write(self):
-        # Cleanup
-        print(self.artists)
         # fixed_artists = {i: self.artists[i] for i in self.artists if self.artists[i] != self.default}
         with open(self.file, "w") as f:
             json.dump(self.artists, f, indent=4)
@@ -89,9 +85,10 @@ def do_nothing(*args, **kwargs):
 
 
 def skip():
+    print(Fore.RED + 'Skipped!' + Style.RESET_ALL, end=' ')
     get_info = dbus.SessionBus()
     spotify_bus = get_info.get_object("org.mpris.MediaPlayer2.spotify", "/org/mpris/MediaPlayer2")
-    # status = spotify_bus.Get('org.mpris.MediaPlayer2.Player', 'PlaybackStatus', dbus_interface='org.freedesktop.DBus.Properties')
+    status = spotify_bus.Get('org.mpris.MediaPlayer2.Player', 'PlaybackStatus', dbus_interface='org.freedesktop.DBus.Properties')
     spotify_bus.Next(dbus_interface='org.mpris.MediaPlayer2.Player', reply_handler=do_nothing, error_handler=do_nothing)
 
 
@@ -135,67 +132,82 @@ def song_print(song):
         skip()
 
 
-def command_handler(command):
+def toggle():
     config = Config()
+
+    if config.autoskip:
+        print(Fore.RED + 'Autoskip disabled' + Style.RESET_ALL, end=' ')
+    else:
+        print(Fore.GREEN + 'Autoskip enabled' + Style.RESET_ALL, end=' ')
+    config.autoskip = not config.autoskip
+    config.write()
+
+
+def bls():
     song = Song()
     song_config = SongConfig()
 
-    def toggle():
-        if config.autoskip:
-            print(Fore.RED + 'Autoskip disabled' + Style.RESET_ALL, end=' ')
-        else:
-            print(Fore.GREEN + 'Autoskip enabled' + Style.RESET_ALL, end=' ')
-        config.autoskip = not config.autoskip
-        config.write()
+    current_song = song_config.create(song.artist)
+    if song.title in current_song["blacklisted_songs"]:
+        current_song["blacklisted_songs"].remove(song.title)
+        text = f'{Fore.RED}Removed{Style.RESET_ALL} "{song.title}" from blacklisted songs'
+    else:
+        current_song["blacklisted_songs"].append(song.title)
+        text = f'{Fore.GREEN}Added{Style.RESET_ALL} "{song.title}" to blacklisted songs'
+        skip()
 
-    def bls():
-        current_song = song_config.create(song.artist)
-        if song.title in current_song["blacklisted_songs"]:
-            current_song["blacklisted_songs"].remove(song.title)
-            text = f'{Fore.RED}Removed{Style.RESET_ALL} "{song.title}" from blacklisted songs'
-        else:
-            current_song["blacklisted_songs"].append(song.title)
-            text = f'{Fore.GREEN}Added{Style.RESET_ALL} "{song.title}" to blacklisted songs'
-            skip()
+    print(text, end=' ')
+    song_config.write()
 
-        print(text, end=' ')
-        song_config.write()
 
-    def bla():
-        current_song = song_config.create(song.artist)
-        if current_song["blacklisted"]:
-            text = f'{Fore.RED}Removed{Style.RESET_ALL} "{song.artist}" from blacklisted artists'
-        else:
-            text = f'{Fore.GREEN}Added{Style.RESET_ALL} "{song.title}" to blacklisted artists'
-            skip()
+def bla():
+    song = Song()
+    song_config = SongConfig()
 
-        current_song["blacklisted"] = not current_song["blacklisted"]
-        print(text, end=' ')
-        song_config.write()
+    current_song = song_config.create(song.artist)
+    if current_song["blacklisted"]:
+        text = f'{Fore.RED}Removed{Style.RESET_ALL} "{song.artist}" from blacklisted artists'
+    else:
+        text = f'{Fore.GREEN}Added{Style.RESET_ALL} "{song.title}" to blacklisted artists'
+        skip()
 
-    def wls():
-        current_song = song_config.create(song.artist)
-        if song.title in current_song["whitelisted_songs"]:
-            current_song["whitelisted_songs"].remove(song.title)
-            text = f'{Fore.RED}Removed{Style.RESET_ALL} "{song.title}" from whitelisted songs'
-        else:
-            current_song["whitelisted_songs"].append(song.title)
-            text = f'{Fore.GREEN}Added{Style.RESET_ALL} "{song.title}" to whitelisted songs'
+    current_song["blacklisted"] = not current_song["blacklisted"]
+    print(text, end=' ')
+    song_config.write()
 
-        print(text, end=' ')
-        song_config.write()
 
-    def wla():
-        current_song = song_config.create(song.artist)
-        if current_song["whitelisted"]:
-            text = f'{Fore.RED}Removed{Style.RESET_ALL} "{song.artist}" from whitelisted artists'
-        else:
-            text = f'{Fore.GREEN}Added{Style.RESET_ALL} "{song.title}" to whitelisted artists'
+def wls():
+    song = Song()
+    song_config = SongConfig()
 
-        current_song["whitelisted"] = not current_song["whitelisted"]
-        print(text, end=' ')
-        song_config.write()
+    current_song = song_config.create(song.artist)
+    if song.title in current_song["whitelisted_songs"]:
+        current_song["whitelisted_songs"].remove(song.title)
+        text = f'{Fore.RED}Removed{Style.RESET_ALL} "{song.title}" from whitelisted songs'
+    else:
+        current_song["whitelisted_songs"].append(song.title)
+        text = f'{Fore.GREEN}Added{Style.RESET_ALL} "{song.title}" to whitelisted songs'
 
+    print(text, end=' ')
+    song_config.write()
+
+
+def wla():
+    song = Song()
+    song_config = SongConfig()
+
+    current_song = song_config.create(song.artist)
+    if current_song["whitelisted"]:
+        text = f'{Fore.RED}Removed{Style.RESET_ALL} "{song.artist}" from whitelisted artists'
+    else:
+        text = f'{Fore.GREEN}Added{Style.RESET_ALL} "{song.title}" to whitelisted artists'
+
+    current_song["whitelisted"] = not current_song["whitelisted"]
+    print(text, end=' ')
+    song_config.write()
+
+
+def command_handler(command):
     commands = {
         't': toggle,
         'toggle': toggle,
@@ -212,13 +224,20 @@ def command_handler(command):
 
 
 class InputThread(threading.Thread):
+    def signal_handler(sig, frame):
+        # print('\nExiting')
+        os._exit(1)
+
+    # Ctrl + C
+    signal.signal(signal.SIGINT, signal_handler)
+
     def run(self):
         while True:
             command = input()
             command_handler(command.split(' '))
 
 
-async def main():
+async def main(loop):
     # Bad but necessary to prevent rerunning on the same song.
     global past_song
     config = Config()
@@ -260,12 +279,21 @@ async def main():
                 score = variant.value["xesam:autoRating"].value
                 song = Song(title, artist, score)
                 # Comparing objects doesn't work so it compares the dict.
-                if song.__dict__ != past_song.__dict__:
+                # != (" ", " ", " ") to prevent skipping when spotify is used on another device and
+                # metadata cannot be extrected.
+                if song.__dict__ != past_song.__dict__ and (title, artist, score) != (" ", " ", " "):
                     past_song = song
                     song_print(song)
 
     properties.on_properties_changed(on_properties_changed)
     await loop.create_future()
+    input_thread.join()
 
-loop.run_until_complete(main())
-input_thread.join()
+
+def run():
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main(loop))
+
+
+if __name__ == "__main__":
+    run()
