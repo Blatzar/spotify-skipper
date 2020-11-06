@@ -9,8 +9,10 @@ import time
 import json
 import threading
 from copy import deepcopy
-from colorama import Fore, Back, Style  # Colors in terminal
+from colorama import Fore, Back, Style, init  # Colors in terminal
+from notify import notification
 
+init(autoreset=True)
 DBusGMainLoop(set_as_default=True)
 
 
@@ -35,6 +37,7 @@ class Config():
         self.default = {
             "skipSongsUnder": 0.1,
             "autoSkip": True,
+            "sendNotifications": True
         }
 
         # File generation (only first run).
@@ -47,11 +50,13 @@ class Config():
             settings = json.load(f)
             self.skip_songs_under = settings['skipSongsUnder']
             self.autoskip = settings['autoSkip']
+            self.notifications = settings['sendNotifications']
 
     def write(self):
         json_data = {
             'skipSongsUnder': self.skip_songs_under,
             'autoSkip': self.autoskip,
+            'sendNotifications': self.notifications
         }
         with open(self.file, "w") as f:
             json.dump(json_data, f, indent=4)
@@ -176,9 +181,26 @@ def toggle():
 
     if config.autoskip:
         print(Fore.RED + 'Autoskip disabled' + Style.RESET_ALL, end=' ')
+        if config.notifications:
+            notification('Autoskip disabled', title='Autoskipper')
     else:
         print(Fore.GREEN + 'Autoskip enabled' + Style.RESET_ALL, end=' ')
+        if config.notifications:
+            notification('Autoskip enabled', title='Autoskipper')
     config.autoskip = not config.autoskip
+    config.write()
+
+
+def notify():
+    config = Config()
+
+    if config.notifications:
+        print(Fore.RED + 'Notifications disabled' + Style.RESET_ALL, end=' ')
+        # notification('Notifications disabled', title='Autoskipper')
+    else:
+        print(Fore.GREEN + 'Notifications enabled' + Style.RESET_ALL, end=' ')
+        notification('Notifications enabled', title='Autoskipper')
+    config.notifications = not config.notifications
     config.write()
 
 
@@ -186,64 +208,87 @@ def bls():
     song = Song()
     song_config = SongConfig()
     current_song = song_config.create(song.artist)
+    config = Config()
 
     if song.title in current_song["blacklisted_songs"]:
         current_song["blacklisted_songs"].remove(song.title)
-        text = f'{Fore.RED}Removed{Style.RESET_ALL} "{song.title}" from blacklisted songs'
+        text = '{}Removed{} "' + song.title + '" from blacklisted songs'
+        colored_text = text.format(Fore.RED, Style.RESET_ALL)
     else:
         current_song["blacklisted_songs"].append(song.title)
-        text = f'{Fore.GREEN}Added{Style.RESET_ALL} "{song.title}" to blacklisted songs'
+        text = '{}Added{} "' + song.title + '" to blacklisted songs'
+        colored_text = text.format(Fore.GREEN, Style.RESET_ALL)
         skip()
 
-    print(text, end=' ')
-
+    text = text.format('', '')
+    print(colored_text, end=' ')
+    if config.notifications:
+        notification(text, title='Autoskipper')
     song_config.write()
 
 
 def bla():
     song = Song()
     song_config = SongConfig()
-
     current_song = song_config.create(song.artist)
+    config = Config()
+
     if current_song["blacklisted"]:
-        text = f'{Fore.RED}Removed{Style.RESET_ALL} "{song.artist}" from blacklisted artists'
+        text = '{}Removed{} "' + song.artist + '" from blacklisted artists'
+        colored_text = text.format(Fore.RED, Style.RESET_ALL)
     else:
-        text = f'{Fore.GREEN}Added{Style.RESET_ALL} "{song.title}" to blacklisted artists'
+        text = '{}Added{} "' + song.artist + '" to blacklisted artists'
+        colored_text = text.format(Fore.GREEN, Style.RESET_ALL)
         skip()
 
     current_song["blacklisted"] = not current_song["blacklisted"]
-    print(text, end=' ')
+    text = text.format('', '')
+    print(colored_text, end=' ')
+    if config.notifications:
+        notification(text, title='Autoskipper')
     song_config.write()
 
 
 def wls():
     song = Song()
     song_config = SongConfig()
-
     current_song = song_config.create(song.artist)
+    config = Config()
+
     if song.title in current_song["whitelisted_songs"]:
         current_song["whitelisted_songs"].remove(song.title)
-        text = f'{Fore.RED}Removed{Style.RESET_ALL} "{song.title}" from whitelisted songs'
+        text = '{}Removed{} "' + song.title + '" from whitelisted songs'
+        colored_text = text.format(Fore.RED, Style.RESET_ALL)
     else:
         current_song["whitelisted_songs"].append(song.title)
-        text = f'{Fore.GREEN}Added{Style.RESET_ALL} "{song.title}" to whitelisted songs'
+        text = '{}Added{} "' + song.title + '" to whitelisted songs'
+        colored_text = text.format(Fore.GREEN, Style.RESET_ALL)
 
-    print(text, end=' ')
+    text = text.format('', '')
+    print(colored_text, end=' ')
+    if config.notifications:
+        notification(text, title='Autoskipper')
     song_config.write()
 
 
 def wla():
     song = Song()
     song_config = SongConfig()
-
     current_song = song_config.create(song.artist)
+    config = Config()
+
     if current_song["whitelisted"]:
-        text = f'{Fore.RED}Removed{Style.RESET_ALL} "{song.artist}" from whitelisted artists'
+        text = '{}Removed{} "' + song.artist + '" from whitelisted artists'
+        colored_text = text.format(Fore.RED, Style.RESET_ALL)
     else:
-        text = f'{Fore.GREEN}Added{Style.RESET_ALL} "{song.title}" to whitelisted artists'
+        text = '{}Added{} "' + song.artist + '" to whitelisted artists'
+        colored_text = text.format(Fore.GREEN, Style.RESET_ALL)
 
     current_song["whitelisted"] = not current_song["whitelisted"]
-    print(text, end=' ')
+    text = text.format('', '')
+    print(colored_text, end=' ')
+    if config.notifications:
+        notification(text, title='Autoskipper')
     song_config.write()
 
 
@@ -255,6 +300,7 @@ def cli_help():
         'bla': 'Toggle blacklist for current artist',
         'wls': 'Toggle whitelist for current song',
         'wla': 'Toggle whitelist for current artist',
+        'notify, n': 'Toggle desktop notifications',
         'help, h': 'Show this menu'
     }
     for command, info in help_commands.items():
@@ -273,6 +319,8 @@ def command_handler(command):
         'wla': wla,
         'h': cli_help,
         'help': cli_help,
+        'n': notify,
+        'notify': notify
     }
     for word in command:
         if word.lower() in commands:

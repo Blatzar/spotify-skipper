@@ -24,7 +24,8 @@ setup(
         'dbus-python',
         'dbus_next',
         'asyncio',
-        'argparse'
+        'argparse',
+        'notify-send'
     ],
     long_description=long_description,
     long_description_content_type='text/markdown',
