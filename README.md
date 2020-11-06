@@ -25,4 +25,6 @@ Using any flags will not start the CLI, to make scripting easier. Use --run to p
 | -wla   | --whitelist-artist| Toggle whitelist for current artist                         |
 | -bls   | --blacklist-song  | Toggle blacklist for current song                           |
 | -bla   | --blacklist-artist| Toggle blacklist for current artist                         |
+| -n     | --notify          | Toggle notifications                                        |
 | -r     | --run             | Run the CLI regardless of flags                             |
+
