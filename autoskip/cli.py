@@ -11,6 +11,7 @@ def main():
     parser.add_argument('--whitelist-artist', '-wla', action='store_const', const=True, help='Toggle whitelist for current artist')
     parser.add_argument('--blacklist-song', '-bls', action='store_const', const=True, help='Toggle blacklist for current song')
     parser.add_argument('--blacklist-artist', '-bla', action='store_const', const=True, help='Toggle blacklist for current artist')
+    parser.add_argument('--notify', '-n', action='store_const', const=True, help='Toggle notifications')
     parser.add_argument('--run', '-r', action='store_const', const=True, help='Run CLI')
     args = parser.parse_args()
 
@@ -32,6 +33,9 @@ def main():
 
     if args.toggle:
         autoskipper.toggle()
+
+    if args.notify:
+        autoskipper.notify()
 
     # Makes a dict of all args used. Checked in order to determine if the program should be run.
     fixed_args = {i: args.__dict__[i] for i in args.__dict__ if args.__dict__[i] is not None}
