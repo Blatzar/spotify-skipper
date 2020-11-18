@@ -46,11 +46,22 @@ class Config():
             with open(self.file, 'w') as f:
                 json.dump(self.default, f, indent=4)
 
-        with open(self.file) as f:
-            settings = json.load(f)
-            self.skip_songs_under = settings['skipSongsUnder']
-            self.autoskip = settings['autoSkip']
-            self.notifications = settings['sendNotifications']
+        tries = 3
+        for i in range(tries):
+            try:
+                with open(self.file) as f:
+                    settings = json.load(f)
+                    self.skip_songs_under = settings['skipSongsUnder']
+                    self.autoskip = settings['autoSkip']
+                    self.notifications = settings['sendNotifications']
+                    break
+            except json.decoder.JSONDecodeError as e:
+                # Last try:
+                if i == tries - 1:
+                    raise json.decoder.JSONDecodeError("Unable to properly read config json data.", e.doc, e.pos)
+                else:
+                    time.sleep(1)
+                    continue
 
     def write(self):
         json_data = {
@@ -85,8 +96,21 @@ class SongConfig():
             with open(self.file, 'w') as f:
                 json.dump({}, f, indent=4)
 
-        with open(self.file) as f:
-            self.artists = json.load(f)
+        tries = 3
+        for i in range(tries):
+            try:
+                with open(self.file) as f:
+                    self.artists = json.load(f)
+                    break
+
+            # Gets errors if it's read while it writes from another process.
+            except json.decoder.JSONDecodeError as e:
+                # Last try:
+                if i == tries - 1:
+                    raise json.decoder.JSONDecodeError("Unable to properly read artist json data.", e.doc, e.pos)
+                else:
+                    time.sleep(1)
+                    continue
 
     # Using lower level python magic this can probably be done better.
     def create(self, artist):
