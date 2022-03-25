@@ -37,7 +37,7 @@ def make_dir(path):
         # print(f"Error making directories to {path}")
         pass
 
-def getConfigPath():
+def get_config_path():
     if isWindows:
         return os.path.expanduser("~\\AppData\\Local\\autoskip")
     elif 'XDG_CONFIG_HOME' in os.environ:
@@ -50,7 +50,7 @@ class Config():
         self.filename = filename
         # Allows changing XDG_CONFIG_HOME
         if path is None:
-            self.path = getConfigPath()
+            self.path = get_config_path()
 
         self.file = os.path.join(self.path, self.filename)
         self.default = {
@@ -96,7 +96,7 @@ class SongConfig():
     def __init__(self, path=None, filename="artists.json"):
         self.filename = filename
         if path is None:
-            self.path = getConfigPath()
+            self.path = get_config_path()
 
 
         self.file = os.path.join(self.path, self.filename)
@@ -488,12 +488,7 @@ async def main(loop):
 
 
 def run():
-    loop = None
-    if (isWindows):
-        loop = asyncio.new_event_loop()
-    else:
-        loop = asyncio.get_running_loop()
-
+    loop = asyncio.new_event_loop()
     loop.run_until_complete(main(loop))
 
 
