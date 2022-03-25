@@ -5,8 +5,7 @@
 
 ### Python Package
 
-**Linux only!** This program relies on dbus and will not work on windows.
-OSX not tested.
+Works on Windows and Linux, but song score is unavailable on Windows.
 
 You can install the [pypi](https://pypi.org/project/autoskip/) package using `pip3 install autoskip`. 
 
