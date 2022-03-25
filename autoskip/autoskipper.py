@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-from dbus_next.aio import MessageBus
-from dbus.mainloop.glib import DBusGMainLoop
-import dbus
 import asyncio
 import os
 import signal
@@ -11,27 +8,49 @@ import threading
 from copy import deepcopy
 from colorama import Fore, Back, Style, init  # Colors in terminal
 from notify import notification
+try:
+    from dbus_next.aio import MessageBus
+    from dbus.mainloop.glib import DBusGMainLoop
+    import dbus
+except ModuleNotFoundError:
+    pass
+
+try:
+    import win32gui
+    import win32api
+    import win32process
+    import pywintypes
+except ModuleNotFoundError:
+    pass
+
+isWindows = os.name == "nt"
 
 init(autoreset=True)
-DBusGMainLoop(set_as_default=True)
 
+if (not isWindows):
+    DBusGMainLoop(set_as_default=True)
 
 def make_dir(path):
     try:
         os.makedirs(path)
     except OSError as e:
+        # print(f"Error making directories to {path}")
         pass
 
+def get_config_path():
+    if isWindows:
+        return os.path.expanduser("~\\AppData\\Local\\autoskip")
+    elif 'XDG_CONFIG_HOME' in os.environ:
+        return os.path.join(os.environ.get('XDG_CONFIG_HOME'), 'autoskip')
+    else:
+        return os.path.expanduser("~/.config/autoskip")
 
 class Config():
     def __init__(self, path=None, filename="config.json"):
         self.filename = filename
         # Allows changing XDG_CONFIG_HOME
         if path is None:
-            if 'XDG_CONFIG_HOME' in os.environ:
-                self.path = os.path.join(os.environ.get('XDG_CONFIG_HOME'), 'autoskip')
-            else:
-                self.path = os.path.expanduser("~/.config/autoskip")
+            self.path = get_config_path()
 
         self.file = os.path.join(self.path, self.filename)
         self.default = {
@@ -77,10 +96,8 @@ class SongConfig():
     def __init__(self, path=None, filename="artists.json"):
         self.filename = filename
         if path is None:
-            if 'XDG_CONFIG_HOME' in os.environ:
-                self.path = os.path.join(os.environ.get('XDG_CONFIG_HOME'), 'autoskip')
-            else:
-                self.path = os.path.expanduser("~/.config/autoskip")
+            self.path = get_config_path()
+
 
         self.file = os.path.join(self.path, self.filename)
         self.default = {
@@ -132,20 +149,57 @@ class Song():
             self.artist = artist
             self.score = score
         else:
-            # Waits for spotify to connect.
-            while True:
-                try:
-                    get_info = dbus.SessionBus()
-                    spotify_bus = get_info.get_object("org.mpris.MediaPlayer2.spotify", "/org/mpris/MediaPlayer2")
-                    spotify_properties = dbus.Interface(spotify_bus, "org.freedesktop.DBus.Properties")
-                    metadata = spotify_properties.Get("org.mpris.MediaPlayer2.Player", "Metadata")
-                    break
-                except dbus.exceptions.DBusException:
-                    time.sleep(1)
+            if (isWindows):
+                PROCESS_QUERY_INFORMATION = 0x0400
+                # Doesn't seem to work with strings?
+                spotifyName = []
 
-            self.title = str(metadata['xesam:title'])
-            self.artist = str(metadata['xesam:artist'][0])
-            self.score = float(metadata['xesam:autoRating'])
+                def get_spotify(hwnd, _):
+                    # https://github.com/wuxc/pywin32doc
+                    text = win32gui.GetWindowText(hwnd)
+                    classname = win32gui.GetClassName(hwnd)
+                    if classname == "Chrome_WidgetWin_0" and len(text) > 0:
+                        # https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openprocess
+                        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                        handle = win32api.OpenProcess(PROCESS_QUERY_INFORMATION, False, pid)
+                        module = win32process.GetModuleFileNameEx(handle, None)
+                        handle.close()
+
+                        if (module.endswith("Spotify.exe")):
+                            spotifyName.append(text)
+
+                # Waits til found
+                while(True):
+                    try:
+                        win32gui.EnumWindows(get_spotify, None)
+                    except pywintypes.error:
+                        pass
+
+                    if (len(spotifyName) > 0):
+                        song_info = spotifyName[0]
+
+                        artist, title = song_info.split(" - ",1)
+                        self.artist = artist.strip()
+                        self.title = title.strip()
+                        # Can't get score.
+                        self.score = 0
+                        break
+                    time.sleep(1)
+            else:
+                # Waits for spotify to connect.
+                while True:
+                    try:
+                        get_info = dbus.SessionBus()
+                        spotify_bus = get_info.get_object("org.mpris.MediaPlayer2.spotify", "/org/mpris/MediaPlayer2")
+                        spotify_properties = dbus.Interface(spotify_bus, "org.freedesktop.DBus.Properties")
+                        metadata = spotify_properties.Get("org.mpris.MediaPlayer2.Player", "Metadata")
+                        break
+                    except dbus.exceptions.DBusException:
+                        time.sleep(1)
+
+                self.title = str(metadata['xesam:title'])
+                self.artist = str(metadata['xesam:artist'][0])
+                self.score = float(metadata['xesam:autoRating'])
 
 
 def do_nothing(*args, **kwargs):
@@ -154,10 +208,15 @@ def do_nothing(*args, **kwargs):
 
 def skip():
     print(Fore.RED + 'Skipped!' + Style.RESET_ALL, end=' ')
-    get_info = dbus.SessionBus()
-    spotify_bus = get_info.get_object("org.mpris.MediaPlayer2.spotify", "/org/mpris/MediaPlayer2")
-    status = spotify_bus.Get('org.mpris.MediaPlayer2.Player', 'PlaybackStatus', dbus_interface='org.freedesktop.DBus.Properties')
-    spotify_bus.Next(dbus_interface='org.mpris.MediaPlayer2.Player', reply_handler=do_nothing, error_handler=do_nothing)
+    if (isWindows):
+        win32api.keybd_event(0xB0, 0, 0, 0)
+        time.sleep(.05)
+        win32api.keybd_event(0xB0, 0, 0x2, 0)
+    else:
+        get_info = dbus.SessionBus()
+        spotify_bus = get_info.get_object("org.mpris.MediaPlayer2.spotify", "/org/mpris/MediaPlayer2")
+        status = spotify_bus.Get('org.mpris.MediaPlayer2.Player', 'PlaybackStatus', dbus_interface='org.freedesktop.DBus.Properties')
+        spotify_bus.Next(dbus_interface='org.mpris.MediaPlayer2.Player', reply_handler=do_nothing, error_handler=do_nothing)
 
 
 def song_print(song):
@@ -168,6 +227,7 @@ def song_print(song):
     scoreprefix = ''
     songprefix = ''
     artistprefix = ''
+    score = ''
     skip_song = False
 
     if song.artist in artists:
@@ -190,11 +250,12 @@ def song_print(song):
             artistprefix = Fore.GREEN
             skip_song = False
 
-        if song.score < config.skip_songs_under:
+        if song.score < config.skip_songs_under and not isWindows:
             scoreprefix = Fore.RED
+            score = song.score
             skip_song = True
 
-    print(f'\n{scoreprefix}{song.score}{Style.RESET_ALL} {songprefix}{song.title}{Style.RESET_ALL} | {artistprefix}{song.artist}{Style.RESET_ALL} ', end='')
+    print(f'\n{scoreprefix}{score}{Style.RESET_ALL} {songprefix}{song.title}{Style.RESET_ALL} | {artistprefix}{song.artist}{Style.RESET_ALL} ', end='')
 
     if config.autoskip and skip_song:
         skip()
@@ -240,7 +301,7 @@ def bls():
         colored_text = text.format(Fore.RED, Style.RESET_ALL)
     else:
         current_song["blacklisted_songs"].append(song.title)
-        text = '{}Added{} "' + song.title + '" to blacklisted songs'
+        text = ' {}Added{} "' + song.title + '" to blacklisted songs'
         colored_text = text.format(Fore.GREEN, Style.RESET_ALL)
         skip()
 
@@ -315,7 +376,6 @@ def wla():
         notification(text, title='Autoskipper')
     song_config.write()
 
-
 def cli_help():
     help_commands = {
         'toggle, t': 'Toggle autoskipper',
@@ -325,11 +385,15 @@ def cli_help():
         'wls': 'Toggle whitelist for current song',
         'wla': 'Toggle whitelist for current artist',
         'notify, n': 'Toggle desktop notifications',
+        'cls, clear, c': 'Toggle desktop notifications',
         'help, h': 'Show this menu'
     }
     for command, info in help_commands.items():
         print(f'{command}: {info}')
 
+def clear():
+    os.system("cls||clear")
+    song_print(past_song)
 
 def command_handler(command):
     commands = {
@@ -344,7 +408,10 @@ def command_handler(command):
         'h': cli_help,
         'help': cli_help,
         'n': notify,
-        'notify': notify
+        'notify': notify,
+        'cls' : clear,
+        'c' : clear,
+        'clear' : clear,
     }
     for word in command:
         if word.lower() in commands:
@@ -383,37 +450,45 @@ async def main(loop):
     input_thread = InputThread()
     input_thread.start()
 
-    bus = await MessageBus().connect()
-    introspection = await bus.introspect("org.mpris.MediaPlayer2.spotify", "/org/mpris/MediaPlayer2")
+    if (not isWindows):
+        bus = await MessageBus().connect()
+        introspection = await bus.introspect("org.mpris.MediaPlayer2.spotify", "/org/mpris/MediaPlayer2")
 
-    obj = bus.get_proxy_object('org.mpris.MediaPlayer2.spotify', '/org/mpris/MediaPlayer2', introspection)
-    player = obj.get_interface('org.mpris.MediaPlayer2.Player')
-    properties = obj.get_interface('org.freedesktop.DBus.Properties')
+        obj = bus.get_proxy_object('org.mpris.MediaPlayer2.spotify', '/org/mpris/MediaPlayer2', introspection)
+        player = obj.get_interface('org.mpris.MediaPlayer2.Player')
+        properties = obj.get_interface('org.freedesktop.DBus.Properties')
 
-    # listen to signals
-    def on_properties_changed(interface_name, changed_properties, invalidated_properties):
-        global past_song
-        for changed, variant in changed_properties.items():
-            # print(f'property changed: {changed} - {variant.value}')
-            if changed == "Metadata":
-                title = variant.value["xesam:title"].value
-                artist = variant.value["xesam:artist"].value[0]
-                score = variant.value["xesam:autoRating"].value
-                song = Song(title, artist, score)
-                # Comparing objects doesn't work so it compares the dict.
-                # != (" ", " ", " ") to prevent skipping when spotify is used on another device and
-                # metadata cannot be extrected.
-                if song.__dict__ != past_song.__dict__ and (title, artist, score) != ("", "", 0):
-                    past_song = song
-                    song_print(song)
+        # listen to signals
+        def on_properties_changed(interface_name, changed_properties, invalidated_properties):
+            global past_song
+            for changed, variant in changed_properties.items():
+                # print(f'property changed: {changed} - {variant.value}')
+                if changed == "Metadata":
+                    title = variant.value["xesam:title"].value
+                    artist = variant.value["xesam:artist"].value[0]
+                    score = variant.value["xesam:autoRating"].value
+                    song = Song(title, artist, score)
+                    # Comparing objects doesn't work so it compares the dict.
+                    # != (" ", " ", " ") to prevent skipping when spotify is used on another device and
+                    # metadata cannot be extrected.
+                    if song.__dict__ != past_song.__dict__ and (title, artist, score) != ("", "", 0):
+                        past_song = song
+                        song_print(song)
 
-    properties.on_properties_changed(on_properties_changed)
+        properties.on_properties_changed(on_properties_changed)
+    else:
+        while (True):
+            song = Song()
+            if song.__dict__ != past_song.__dict__ and (song.title, song.artist, song.score) != ("", "", 0):
+                past_song = song
+                song_print(song)
+
     await loop.create_future()
     input_thread.join()
 
 
 def run():
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
     loop.run_until_complete(main(loop))
 
 

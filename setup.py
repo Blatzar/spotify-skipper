@@ -3,6 +3,7 @@
 from setuptools import setup, find_packages
 import re
 import io
+import os
 
 with open('README.md', 'r') as f:
     long_description = f.read()
@@ -21,11 +22,12 @@ setup(
     keywords=['spotify', 'skip'],
     install_requires=[
         'colorama',
-        'dbus-python',
-        'dbus_next',
         'asyncio',
         'argparse',
-        'notify-send'
+        'notify-send',
+        'pywin32;platform_system == "nt"',
+        'dbus-python;platform_system != "nt"',
+        'dbus_next;platform_system != "nt"',
     ],
     long_description=long_description,
     long_description_content_type='text/markdown',
