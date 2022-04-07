@@ -177,6 +177,9 @@ class Song():
 
                     if (len(spotifyName) > 0):
                         song_info = spotifyName[0]
+                        if "Spotify" in song_info: # When no song is played, wait.
+                            time.sleep(1)
+                            continue
 
                         artist, title = song_info.split(" - ",1)
                         self.artist = artist.strip()
