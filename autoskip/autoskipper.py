@@ -170,6 +170,7 @@ class Song():
 
                 # Waits til found
                 while(True):
+                    spotifyName = []
                     try:
                         win32gui.EnumWindows(get_spotify, None)
                     except pywintypes.error:
