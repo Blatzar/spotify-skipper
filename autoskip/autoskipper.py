@@ -205,7 +205,6 @@ class Song():
                 self.artist = str(metadata['xesam:artist'][0])
                 self.score = float(metadata['xesam:autoRating'])
 
-
 def do_nothing(*args, **kwargs):
     pass
 
@@ -254,12 +253,15 @@ def song_print(song):
             artistprefix = Fore.GREEN
             skip_song = False
 
-        if song.score < config.skip_songs_under and not isWindows:
+        if song.score < config.skip_songs_under:
             scoreprefix = Fore.RED
-            score = song.score
             skip_song = True
 
-    print(f'\n{scoreprefix}{score}{Style.RESET_ALL} {songprefix}{song.title}{Style.RESET_ALL} | {artistprefix}{song.artist}{Style.RESET_ALL} ', end='')
+    # Only shows score on Linux
+    score_space = ' ' * (not isWindows)
+    score = str(song.score) * (not isWindows)
+
+    print(f'\n{scoreprefix}{score}{Style.RESET_ALL}{score_space}{songprefix}{song.title}{Style.RESET_ALL} | {artistprefix}{song.artist}{Style.RESET_ALL} ', end='')
 
     if config.autoskip and skip_song:
         skip()
